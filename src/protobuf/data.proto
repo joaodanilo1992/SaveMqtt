@@ -1,0 +1,46 @@
+// Smart campus protocol buffer definition
+// Version: 0.0.0.2
+
+syntax = "proto2";
+
+message RtStatus
+{
+	required bool connected = 1;
+	required string fw_version = 2;
+	required string ip_address = 3;
+	required int32 channel = 4;
+}
+
+message Command
+{
+	optional string payload = 1;
+}
+
+message Response
+{
+	required int32 status = 1;
+    optional string message = 2;
+}
+
+message Alert
+{
+	optional string message = 1;
+}
+
+message BtData
+{
+	required int32 time = 1;
+	required string mac = 2;
+	required int32 rssi = 3;
+	required string data = 4;
+}
+
+message DataForward
+{
+	required int32 rssi = 1;
+	required int32 rt_time = 2;
+	required int32 bt_count = 3;
+	required int32 serial = 4;
+	repeated BtData bt = 5;
+	optional string message = 6;
+}
