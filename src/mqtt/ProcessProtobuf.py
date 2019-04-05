@@ -1,9 +1,10 @@
 
 import os
 import time
-import datetime
+
 
 import pandas as pd
+from datetime import datetime
 from queue import Queue
 from threading import Thread
 
@@ -21,6 +22,7 @@ class ProcessProtobuf:
 
     __queue = None
     __columns = None
+    __data = {}
 
     def __init__(self):        
         self.__log = Log("ProcessProtobuf").start()
@@ -40,9 +42,15 @@ class ProcessProtobuf:
         self.__queue.put(pkt)
     
     def processQueue(self):
-        while True:            
-            msg = self.__queue.get()
-            self.decodeProtobuf(msg)
+        while True:        
+            while not self.__queue.empty():    
+                msg = self.__queue.get()
+                self.decodeProtobuf(msg) 
+            
+            if self.__data:           
+                self.generateFile(self.__data)
+                self.__data.clear()
+            time.sleep(1)
     
     def decodeProtobuf(self, rawPkt):
         
@@ -62,14 +70,17 @@ class ProcessProtobuf:
             msg {[xrbo_pb2.DataForward]} -- [Mensagem dos beacons MQTT]
             gateway {[int]} -- [O gateway que escutou a mensagem]
         """
-        data = {}
+        # data = {}
         for i in range(msg.bt_count):
             beacon = msg.bt[i].mac.upper()
-            rssi = msg.bt[i].rssi
+            rssi = int(msg.bt[i].rssi)
 
-            data[beacon] = {gateway: rssi}
-
-        self.generateFile(data)
+            # data[beacon] = {gateway: rssi}
+            if beacon not in self.__data:
+                self.__data[beacon] = { gateway: rssi }
+            else:
+                if gateway not in self.__data[beacon] or rssi > self.__data[beacon][gateway]:
+                    self.__data[beacon][gateway] = rssi
     
     def generateFile(self, data):
         """ Gera o arquivo no formato em que deve ser salvo (com todos os gateways da base)
@@ -78,23 +89,25 @@ class ProcessProtobuf:
             data {[dict]} -- [Mensagem do gateway]
         """
 
-        beacons = pd.Series(list(data.keys()))
+        
+        beacons = pd.Series(list(data.keys()), dtype=str)
         
         dataBlock = pd.DataFrame(columns=self.__columns)
         dataBlock["BEACONID"] = pd.concat([dataBlock["BEACONID"], beacons], sort=True, ignore_index=True)
+
+        newData = pd.DataFrame.from_dict(data, dtype='Int64')
         
-        newData = pd.DataFrame.from_dict(data)
-        
-        dataBlock["WAP" + str(newData.T.columns.values[0])] = newData.T.iloc[:,0].values
-        dataBlock["TIMESTAMP"] = datetime.datetime.now().timestamp()
+        dataBlock[["WAP" + str(gateway) for gateway in newData.T.columns.values]] = newData.T.values
+        dataBlock["TIMESTAMP"] = datetime.now().timestamp()
         
         dataBlock.fillna(100, inplace=True)
+
 
         self.saveFile(dataBlock)
     
     def saveFile(self, dataBlock):
         
-        now = datetime.datetime.now()
+        now = datetime.now()
         path = "logs/" + now.strftime("%Y-%m-%d") + "/"
         nameFile = "Base.csv"
         if(not os.path.exists(path)):
