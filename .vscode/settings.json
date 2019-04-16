@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/home/joao/Programs/anaconda3/envs/Location/bin/python"
+    "python.pythonPath": "/home/joao/Programs/anaconda3/envs/Location/bin/python",
+    "python.linting.pylintEnabled": true
 }
