@@ -1,3 +1,4 @@
 src/config/Config.py
+logs
 !logs/README
 !logs/Convert_timestamp.py
