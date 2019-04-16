@@ -23,6 +23,7 @@ class ProcessProtobuf:
     __queue = None
     __columns = None
     __data = {}
+    __rtTime = 0
 
     def __init__(self):        
         self.__log = Log("ProcessProtobuf").start()
@@ -42,15 +43,9 @@ class ProcessProtobuf:
         self.__queue.put(pkt)
     
     def processQueue(self):
-        while True:        
-            while not self.__queue.empty():    
-                msg = self.__queue.get()
-                self.decodeProtobuf(msg) 
-            
-            if self.__data:           
-                self.generateFile(self.__data)
-                self.__data.clear()
-            time.sleep(1)
+        while True:   
+            msg = self.__queue.get()
+            self.decodeProtobuf(msg) 
     
     def decodeProtobuf(self, rawPkt):
         
@@ -60,6 +55,13 @@ class ProcessProtobuf:
         pkt = xrbo_pb2.DataForward()
         pkt.ParseFromString(rawPkt.payload)
 
+        if self.__rtTime < pkt.rt_time:
+            self.__rtTime = pkt.rt_time
+
+            if self.__data:           
+                self.generateFile(self.__data)
+                self.__data.clear()
+        
         for field in pkt.ListFields():
             if field[0].type == field[0].TYPE_MESSAGE:
                 self.processProtobuf(pkt, gateway) 
@@ -70,16 +72,17 @@ class ProcessProtobuf:
             msg {[xrbo_pb2.DataForward]} -- [Mensagem dos beacons MQTT]
             gateway {[int]} -- [O gateway que escutou a mensagem]
         """
-        # data = {}
+        
         for i in range(msg.bt_count):
             beacon = msg.bt[i].mac.upper()
             rssi = int(msg.bt[i].rssi)
 
-            # data[beacon] = {gateway: rssi}
             if beacon not in self.__data:
                 self.__data[beacon] = { gateway: rssi }
             else:
-                if gateway not in self.__data[beacon] or rssi > self.__data[beacon][gateway]:
+                if gateway not in self.__data[beacon]:
+                    self.__data[beacon][gateway] = rssi
+                elif rssi > self.__data[beacon][gateway]:
                     self.__data[beacon][gateway] = rssi
     
     def generateFile(self, data):
@@ -88,7 +91,6 @@ class ProcessProtobuf:
         Arguments:
             data {[dict]} -- [Mensagem do gateway]
         """
-
         
         beacons = pd.Series(list(data.keys()), dtype=str)
         
@@ -100,8 +102,7 @@ class ProcessProtobuf:
         dataBlock[["WAP" + str(gateway) for gateway in newData.T.columns.values]] = newData.T.values
         dataBlock["TIMESTAMP"] = datetime.now().timestamp()
         
-        dataBlock.fillna(100, inplace=True)
-
+        # dataBlock.fillna(100, inplace=True) #! NaN ocupa menos espaço em disco
 
         self.saveFile(dataBlock)
     
@@ -110,10 +111,13 @@ class ProcessProtobuf:
         now = datetime.now()
         path = "logs/" + now.strftime("%Y-%m-%d") + "/"
         nameFile = "Base.csv"
-        if(not os.path.exists(path)):
+
+        if not os.path.exists(path):
             os.mkdir(path)
             dataBlock.to_csv(path + nameFile, index=False, mode='a', header=True)
-        else:        
+        elif not os.path.isfile(path + nameFile):        
+            dataBlock.to_csv(path + nameFile, index=False, mode='a', header=True)
+        else:
             dataBlock.to_csv(path + nameFile, index=False, mode='a', header=False)
         
         # for row in dataBlock.iterrows():                                          #
